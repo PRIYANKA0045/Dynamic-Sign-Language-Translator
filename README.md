@@ -23,5 +23,5 @@ A real-time, spatiotemporal Sign Language Translator built with Python, OpenCV, 
 
 1. **Clone the repository:**
    ```bash
-   git clone [https://github.com/yourusername/dynamic-sign-translator.git](https://github.com/yourusername/dynamic-sign-translator.git)
+   git clone https://github.com/PRIYANKA0045/Dynamic-Sign-Language-Translator
    cd dynamic-sign-translator
