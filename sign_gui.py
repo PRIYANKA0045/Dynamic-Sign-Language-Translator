@@ -45,7 +45,7 @@ class SignLanguageApp:
         self.frame_buffer = deque(maxlen=self.SEQUENCE_LENGTH)
         self.sequence_features = None
         
-        # NEW: Visual Trail Buffer (Stores the last 25 positions of the index finger)
+        # Visual Trail Buffer
         self.trail_buffer = deque(maxlen=25)
 
         self.cap = cv2.VideoCapture(0)
@@ -71,7 +71,9 @@ class SignLanguageApp:
         self.label_entry = ctk.CTkEntry(self.video_frame, placeholder_text="Type word here (e.g., HELLO)", width=250, font=("Arial", 16))
         self.label_entry.pack(pady=10)
         
-        ctk.CTkLabel(self.video_frame, text="Press the '+' key to capture a sample for this word", text_color="gray", font=("Arial", 12)).pack()
+        # --- NEW: Added a clickable button so you don't have to rely on the keyboard! ---
+        self.btn_capture = ctk.CTkButton(self.video_frame, text="Capture Sample (+)", command=self.capture_sample)
+        self.btn_capture.pack(pady=5)
 
         # Right Frame (Controls & Text)
         self.control_frame = ctk.CTkFrame(self.root, width=350)
@@ -126,27 +128,19 @@ class SignLanguageApp:
             
             if result.multi_hand_landmarks:
                 for hand_landmarks in result.multi_hand_landmarks:
-                    # Draw standard hand landmarks
                     mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
                     
-                    # --- NEW: GLOWING MOTION TRAIL LOGIC ---
+                    # GLOWING MOTION TRAIL LOGIC
                     h, w, _ = frame.shape
-                    # Get the exact X, Y pixel coordinates of the Index Finger Tip (Landmark 8)
                     index_finger = hand_landmarks.landmark[8] 
                     cx, cy = int(index_finger.x * w), int(index_finger.y * h)
                     self.trail_buffer.append((cx, cy))
                     
-                    # Draw the trail from oldest to newest point
                     trail_pts = list(self.trail_buffer)
                     for i in range(1, len(trail_pts)):
-                        # Taper the thickness of the line (newer points are thicker)
                         thickness = int(np.sqrt(64 / float(len(trail_pts) - i + 1)) * 2.5)
-                        
-                        # Draw Cyan "Glow" (Thicker, colored line)
                         cv2.line(frame, trail_pts[i-1], trail_pts[i], (255, 255, 0), thickness + 4)
-                        # Draw White "Core" (Thinner, bright center line)
                         cv2.line(frame, trail_pts[i-1], trail_pts[i], (255, 255, 255), thickness)
-                    # ---------------------------------------
 
                     current_features = self.extract_features(hand_landmarks)
                     self.frame_buffer.append(current_features)
@@ -173,11 +167,10 @@ class SignLanguageApp:
                                     self.last_prediction = prediction
                                     self.frame_counter = 0
             else:
-                # If the hand leaves the frame, reset everything so it doesn't draw wild lines across the screen
                 self.frame_counter = 0
                 self.last_prediction = ""
                 self.frame_buffer.clear() 
-                self.trail_buffer.clear() # Clear the motion trail
+                self.trail_buffer.clear() 
                 if self.is_trained:
                     self.prediction_label.configure(text="Predicting: -")
 
@@ -196,6 +189,25 @@ class SignLanguageApp:
         self.sentence_display.insert("1.0", self.current_sentence)
         self.sentence_display.configure(state="disabled")
 
+    # --- NEW: Dedicated Capture Function that auto-cleans typos ---
+    def capture_sample(self):
+        if not self.is_trained and self.sequence_features is not None:
+            # 1. Grab text and remove any accidental + or = signs
+            raw_text = self.label_entry.get().upper()
+            clean_word = raw_text.replace("=", "").replace("+", "").strip()
+            
+            # 2. Update the text box so you don't see the = signs piling up!
+            self.label_entry.delete(0, 'end')
+            self.label_entry.insert(0, clean_word)
+            
+            # 3. Save the clean word to the AI
+            if len(clean_word) > 0:
+                self.X_train.append(self.sequence_features)
+                self.y_train.append(clean_word)
+                self.status_label.configure(text=f"Collected '{clean_word}': {self.y_train.count(clean_word)} samples")
+            else:
+                self.status_label.configure(text="Error: Type a word in the box first!", text_color="red")
+
     def handle_keypress(self, event):
         key = event.keysym
         
@@ -211,14 +223,8 @@ class SignLanguageApp:
                 
         elif not self.is_trained and self.sequence_features is not None:
             if key == "plus" or key == "equal": 
-                word_label = self.label_entry.get().strip().upper()
-                
-                if len(word_label) > 0:
-                    self.X_train.append(self.sequence_features)
-                    self.y_train.append(word_label)
-                    self.status_label.configure(text=f"Collected '{word_label}': {self.y_train.count(word_label)} samples")
-                else:
-                    self.status_label.configure(text="Error: Type a word in the box first!", text_color="red")
+                # We use a slight delay so the GUI can finish typing the '=' before we wipe it out
+                self.root.after(10, self.capture_sample)
 
     def speak_text(self):
         if len(self.current_sentence.strip()) > 0:
@@ -237,37 +243,41 @@ class SignLanguageApp:
     def load_model(self):
         if os.path.exists("sign_data_words.pkl"):
             with open("sign_data_words.pkl", "rb") as f:
-                self.X_train, self.y_train = pickle.load(f)
+                saved_X, saved_y = pickle.load(f)
+            
+            # Merge old data with any new data you just collected, preventing duplicates
+            if not getattr(self, 'data_loaded', False):
+                self.X_train = saved_X + self.X_train
+                self.y_train = saved_y + self.y_train
+                self.data_loaded = True
+                
             self.ml_model.fit(self.X_train, self.y_train)
             self.activate_model()
-            self.status_label.configure(text="Model Loaded Successfully!", text_color="lightgreen")
+            
+            # Show you exactly which words are currently loaded!
+            unique_words = list(set(self.y_train))
+            self.status_label.configure(text=f"Loaded {len(unique_words)} words: {', '.join(unique_words)}", text_color="lightgreen")
         else:
-            self.status_label.configure(text="Error: sign_data_words.pkl not found", text_color="red")
-
-    def train_model(self):
-        if len(self.X_train) > 0:
-            self.ml_model.fit(self.X_train, self.y_train)
-            self.activate_model()
-            self.status_label.configure(text="Model Trained! Start Signing.", text_color="lightgreen")
-            self.label_entry.configure(state="disabled") 
-        else:
-            self.status_label.configure(text="No data collected yet!", text_color="red")
-
-    def activate_model(self):
-        self.is_trained = True
-        self.btn_load.configure(state="disabled")
-        self.btn_train.configure(state="disabled")
-        self.btn_save.configure(state="normal")
-        self.btn_speak.configure(state="normal")
-        self.btn_clear.configure(state="normal")
+            self.status_label.configure(text="Error: No saved data found", text_color="red")
 
     def save_model(self):
+        # Prevent wiping out old data if you forgot to click "Load" first
+        if os.path.exists("sign_data_words.pkl") and not getattr(self, 'data_loaded', False):
+            with open("sign_data_words.pkl", "rb") as f:
+                saved_X, saved_y = pickle.load(f)
+            self.X_train = saved_X + self.X_train
+            self.y_train = saved_y + self.y_train
+            self.data_loaded = True
+
         with open("sign_data_words.pkl", "wb") as f:
             pickle.dump((self.X_train, self.y_train), f)
-        self.status_label.configure(text="Model Saved!", text_color="lightgreen")
+            
+        unique_words = list(set(self.y_train))
+        self.status_label.configure(text=f"Saved! AI now knows {len(unique_words)} words.", text_color="lightgreen")
 
     def reset_model(self):
         self.is_trained = False
+        self.data_loaded = False  # Reset the merge lock
         self.X_train.clear()
         self.y_train.clear()
         self.clear_text()
@@ -279,7 +289,26 @@ class SignLanguageApp:
         self.btn_speak.configure(state="disabled")
         self.btn_clear.configure(state="disabled")
         self.label_entry.configure(state="normal")
+        self.btn_capture.configure(state="normal") 
         self.status_label.configure(text="Status: Data Collection Mode", text_color="orange")
+
+    def train_model(self):
+        if len(self.X_train) > 0:
+            self.ml_model.fit(self.X_train, self.y_train)
+            self.activate_model()
+            self.status_label.configure(text="Model Trained! Start Signing.", text_color="lightgreen")
+            self.label_entry.configure(state="disabled") 
+            self.btn_capture.configure(state="disabled") # Disable capture button
+        else:
+            self.status_label.configure(text="No data collected yet!", text_color="red")
+
+    def activate_model(self):
+        self.is_trained = True
+        self.btn_load.configure(state="disabled")
+        self.btn_train.configure(state="disabled")
+        self.btn_save.configure(state="normal")
+        self.btn_speak.configure(state="normal")
+        self.btn_clear.configure(state="normal")
 
     def on_closing(self):
         self.cap.release()

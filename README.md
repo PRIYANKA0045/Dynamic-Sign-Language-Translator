@@ -2,7 +2,8 @@
 
 A real-time, spatiotemporal Sign Language Translator built with Python, OpenCV, and MediaPipe. Unlike static gesture recognizers, this application uses a sliding-window memory buffer to understand **moving signs** and full words, complete with a modern GUI, glowing motion trails, and Text-to-Speech (TTS).
 
-![App Screenshot](https://github.com/PRIYANKA0045/Dynamic-Sign-Language-Translator/blob/main/Output.gif)
+![App Screenshot](C:\Users\priyanka sharma\OneDrive\Desktop\CV projects\Sign Language Translator\Output.gif)
+
 
 ## ✨ Features
 
@@ -23,5 +24,5 @@ A real-time, spatiotemporal Sign Language Translator built with Python, OpenCV, 
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/PRIYANKA0045/Dynamic-Sign-Language-Translator
+   git clone [https://github.com/PRIYANKA0045/dynamic-sign-translator.git](https://github.com/PRIYANKA0046/dynamic-sign-translator.git)
    cd dynamic-sign-translator
