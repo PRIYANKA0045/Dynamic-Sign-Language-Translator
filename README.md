@@ -2,8 +2,6 @@
 
 A real-time, spatiotemporal Sign Language Translator built with Python, OpenCV, and MediaPipe. Unlike static gesture recognizers, this application uses a sliding-window memory buffer to understand **moving signs** and full words, complete with a modern GUI, glowing motion trails, and Text-to-Speech (TTS).
 
-http://github.com/PRIYANKA0045/Sign-Language-Translator/blob/main/Output.gif
-
 ## ✨ Features
 
 * **Spatiotemporal AI:** Uses a 15-frame rolling memory buffer and a `RandomForestClassifier` to understand complex, moving hand gestures—not just static poses.
